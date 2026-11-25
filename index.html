@@ -58,7 +58,8 @@ dialog::backdrop{background:#000c}
   <div class="more" id="more">
     <div class="row"><label for="ban">Bản</label><input type="range" id="ban" min="6" max="20" step="0.5" value="12"><output id="banV">12 mm</output></div>
     <div class="row"><label for="day">Dày</label><input type="range" id="day" min="5" max="14" step="0.5" value="9"><output id="dayV">9 mm</output></div>
-    <div class="cal"><label for="hand">Bề ngang bàn tay của bạn</label><input id="hand" type="number" inputmode="decimal" min="55" max="110" placeholder="75"><span>mm, đo ngang các khớp ngón</span></div>
+    <div class="cal"><label><input type="checkbox" id="fit" checked style="width:22px;height:22px;vertical-align:middle"> Tự vừa cổ tay</label><label><input type="checkbox" id="flip" style="width:22px;height:22px;vertical-align:middle"> Đảo chiều cong của vòng</label></div>
+    <div class="cal"><label for="hand">Bề ngang bàn tay của bạn</label><input id="hand" type="number" inputmode="decimal" min="55" max="110" placeholder="75"><span>mm, dùng khi tắt "Tự vừa cổ tay"</span></div>
   </div>
   <div class="bar"><button class="ic" id="moreB" aria-expanded="false">Thông số</button><button class="shut" id="shot" aria-label="Chụp ảnh"></button><button class="ic r" id="flip">Đổi camera</button></div>
 </section>
@@ -85,7 +86,7 @@ const PRESETS = [
   {name:'Vàng mật', base:'#c3863a', light:'#ecc883', vein:'#8a531f', trans:.38, rough:.1, env:1, cotton:0, specks:0},
   {name:'Mặc thuý', base:'#141a17', light:'#25302a', vein:'#060807', trans:0, rough:.1, env:.5, cotton:0, specks:0},
 ];
-const S = {preset:0, ni:56, ban:12, day:9, hand:null, facing:'environment'}, DEFAULT_HAND = 75;
+const S = {preset:0, ni:56, ban:12, day:9, hand:null, facing:'environment', fit:true, flip:false}, DEFAULT_HAND = 75;
 const video = $('cam'), canvas = $('out');
 let landmarker = null, stream = null, lastT = -1, lost = 99, frame = 0;
 
@@ -176,20 +177,42 @@ function sampleLight(){
   mat.envMapIntensity = (.7 + .9*lum) * PRESETS[S.preset].env;
 }
 
+// ---- One Euro filter on every landmark: steady when still, quick when moving ----
+const OE = {minCut:1.4, beta:.03, dCut:1};
+const alpha = (cut, dt) => { const r = 2*Math.PI*cut*dt; return r/(r+1); };
+let oeState = null, oeT = 0;
+function smoothLandmarks(lm, W, H){
+  const now = performance.now()/1000, dt = oeState ? Math.max(1/120, Math.min(.2, now - oeT)) : 1/30; oeT = now;
+  if (!oeState) oeState = lm.map(p => ({x:p.x*W, y:p.y*H, z:p.z*W, dx:0, dy:0, dz:0}));
+  return lm.map((p, i) => {
+    const st = oeState[i], raw = {x:p.x*W, y:p.y*H, z:p.z*W}, out = {};
+    for (const k of ['x','y','z']){
+      const d = (raw[k] - st[k])/dt, ad = alpha(OE.dCut, dt), dk = 'd'+k;
+      st[dk] = st[dk] + ad*(d - st[dk]);
+      const a = alpha(OE.minCut + OE.beta*Math.abs(st[dk]), dt);
+      st[k] = st[k] + a*(raw[k] - st[k]); out[k] = st[k];
+    }
+    return {x:out.x/W, y:out.y/H, z:out.z/W};
+  });
+}
 // ---- smoothing ----
 const pose = {c:new THREE.Vector3(), q:new THREE.Quaternion(), s:0, ok:false};
 const off = new THREE.Vector3();
-function track(lm){
-  const W = canvas.width, H = canvas.height;
+function track(raw){
+  const W = canvas.width, H = canvas.height, lm = smoothLandmarks(raw, W, H);
   const P = i => new THREE.Vector3(lm[i].x*W, -lm[i].y*H, 0);
-  const handMM = S.hand || DEFAULT_HAND, s = P(5).distanceTo(P(17)) / (handMM/1.3);
+  const handMM = S.hand || DEFAULT_HAND;
+  // hand breadth in pixels, from two directions so turning the hand does not shrink the bangle
+  const breadthPx = Math.max(P(5).distanceTo(P(17))*1.3, P(0).distanceTo(P(9))*.95);
+  let s = breadthPx / handMM;
+  if (S.fit){ const wristPx = breadthPx*.7, wantIn = wristPx*1.12; s = wantIn / S.ni; }
   // forearm direction in the picture: from the knuckle line back through the wrist
   const K = P(5).add(P(9)).add(P(13)).add(P(17)).multiplyScalar(.25), d2 = P(0).sub(K), len = Math.max(d2.length(), 1); d2.divideScalar(len);
   // tilt toward/away from the camera, kept in a natural range so the bangle always reads as wrapping the wrist
   const dz = (lm[5].z + lm[9].z + lm[13].z + lm[17].z)/4 - lm[0].z;
   // the palm tilt says little about the forearm when the wrist bends, so the direction comes from how people hold the phone:
   // rear camera = filming your own wrist from above (hand farther away), front camera = hand raised toward the screen
-  const tilt = Math.min(.8, Math.max(.35, Math.atan2(Math.abs(dz)*W, len))), sign = S.facing === 'user' ? -1 : 1;
+  const tilt = Math.min(.8, Math.max(.35, Math.atan2(Math.abs(dz)*W, len))), sign = (S.facing === 'user' ? -1 : 1) * (S.flip ? -1 : 1);
   const ay = new THREE.Vector3(d2.x*Math.cos(tilt), d2.y*Math.cos(tilt), sign*Math.sin(tilt));
   const ax = P(5).sub(P(17)); ax.addScaledVector(ay, -ax.dot(ay)).normalize();
   const az = new THREE.Vector3().crossVectors(ax, ay), rot = new THREE.Matrix4().makeBasis(ax, ay, az);
@@ -221,7 +244,7 @@ function loop(){
       lastT = video.currentTime;
       const r = landmarker.detectForVideo(video, performance.now());
       if (r.landmarks?.length){ track(r.landmarks[0]); lost = 0; } else lost++;
-      if (lost > 6) pose.ok = false;
+      if (lost > 6){ pose.ok = false; oeState = null; }
       rig.visible = lost <= 6;
       $('hint').style.opacity = rig.visible ? 0 : 1;
       if (frame++ % 20 === 0) sampleLight();
@@ -264,6 +287,8 @@ $('sws').innerHTML = PRESETS.map((p,i) => `<button class="sw" data-i="${i}" aria
 $('sws').addEventListener('click', e => { const b = e.target.closest('.sw'); if (!b) return; S.preset = +b.dataset.i; for (const x of $('sws').children) x.setAttribute('aria-pressed', x === b); applyMaterial(); });
 for (const id of ['ni','ban','day']) $(id).addEventListener('input', e => { S[id] = +e.target.value; $(id+'V').textContent = `${S[id]} mm`; rebuild(); });
 $('hand').addEventListener('change', e => { const v = +e.target.value; S.hand = v >= 55 && v <= 110 ? v : null; if (!S.hand) e.target.value = ''; });
+$('fit').addEventListener('change', e => { S.fit = e.target.checked; });
+$('flip').addEventListener('change', e => { S.flip = e.target.checked; });
 $('moreB').addEventListener('click', e => { const on = $('more').classList.toggle('on'); e.currentTarget.setAttribute('aria-expanded', on); });
 $('flip').addEventListener('click', async () => { S.facing = S.facing === 'user' ? 'environment' : 'user'; try { await startCam(); } catch {} });
 let lastShot = null;
