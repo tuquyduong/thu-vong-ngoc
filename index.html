@@ -53,6 +53,7 @@ dialog::backdrop{background:#000c}
 <div class="top"><b>Thử vòng ngọc</b><span id="fps" style="font-size:13px;color:#cfe">&nbsp;</span></div>
 <div class="hint" id="hint">Đưa mu bàn tay và cổ tay vào khung hình</div>
 <section class="tray" aria-label="Điều khiển">
+  <div class="sws" id="kinds"></div>
   <div class="sws" id="sws"></div>
   <div class="row"><label for="ni">Ni vòng</label><input type="range" id="ni" min="48" max="66" step="0.5" value="56"><output id="niV">56 mm</output></div>
   <div class="more" id="more">
@@ -86,7 +87,7 @@ const PRESETS = [
   {name:'Vàng mật', base:'#c3863a', light:'#ecc883', vein:'#8a531f', trans:.38, rough:.1, env:1, cotton:0, specks:0},
   {name:'Mặc thuý', base:'#141a17', light:'#25302a', vein:'#060807', trans:0, rough:.1, env:.5, cotton:0, specks:0},
 ];
-const S = {preset:0, ni:56, ban:12, day:9, hand:null, facing:'environment', fit:true, flip:false}, DEFAULT_HAND = 75;
+const S = {preset:0, ni:56, ban:12, day:9, hand:null, facing:'environment', fit:true, flip:false, kind:'bangle'}, DEFAULT_HAND = 75;
 const video = $('cam'), canvas = $('out');
 let landmarker = null, stream = null, lastT = -1, lost = 99, frame = 0;
 
@@ -138,27 +139,69 @@ const roomEnv = pmrem.fromScene(new RoomEnvironment(), .04).texture; scene.envir
 const key = new THREE.DirectionalLight(0xffffff, 1); key.position.set(-.3,.8,1); scene.add(key);
 const cam = new THREE.OrthographicCamera(0,1,0,-1,-50000,50000);
 const rig = new THREE.Group(); rig.visible = false; scene.add(rig);
-const mat = new THREE.MeshPhysicalMaterial({ior:1.66, clearcoat:.9, clearcoatRoughness:.06, specularIntensity:.7, side:THREE.DoubleSide});
-const bangle = new THREE.Mesh(bangleGeo(), mat); bangle.renderOrder = 2;
-const occ = new THREE.Object3D();
 const fadeU = {uCZ:{value:0}, uR:{value:1}, uRc:{value:30}};
-mat.transparent = true;
-mat.onBeforeCompile = sh => {
-  Object.assign(sh.uniforms, fadeU);
-  sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vVZ;\nuniform float uRc;').replace('#include <project_vertex>', '#include <project_vertex>\nvec2 cdir = normalize(position.xz + 1e-5);\nvVZ = (modelViewMatrix * vec4(cdir.x*uRc, 0.0, cdir.y*uRc, 1.0)).z;');
-  sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vVZ;\nuniform float uCZ;\nuniform float uR;').replace('#include <opaque_fragment>', '#include <opaque_fragment>\ngl_FragColor.a *= smoothstep(-0.7, 0.05, (vVZ - uCZ) / uR);');
+// fade the far half of any piece; works for single meshes and for instanced links/beads
+function fadeMat(m){
+  m.transparent = true;
+  m.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, fadeU);
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying float vVZ;\nuniform float uRc;').replace('#include <project_vertex>', '#include <project_vertex>\n#ifdef USE_INSTANCING\nvec2 cdir = normalize(instanceMatrix[3].xz + 1e-5);\n#else\nvec2 cdir = normalize(position.xz + 1e-5);\n#endif\nvVZ = (modelViewMatrix * vec4(cdir.x*uRc, 0.0, cdir.y*uRc, 1.0)).z;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying float vVZ;\nuniform float uCZ;\nuniform float uR;').replace('#include <opaque_fragment>', '#include <opaque_fragment>\ngl_FragColor.a *= smoothstep(-0.7, 0.05, (vVZ - uCZ) / uR);');
+  };
+  return m;
+}
+const mat = fadeMat(new THREE.MeshPhysicalMaterial({ior:1.66, clearcoat:.9, clearcoatRoughness:.06, specularIntensity:.7, side:THREE.DoubleSide}));
+const beadMat = fadeMat(new THREE.MeshPhysicalMaterial({ior:1.66, clearcoat:1, clearcoatRoughness:.04, specularIntensity:.7}));
+const metal = {
+  gold: fadeMat(new THREE.MeshPhysicalMaterial({color:'#e9c26a', metalness:1, roughness:.17, clearcoat:.4, clearcoatRoughness:.1})),
+  silver: fadeMat(new THREE.MeshPhysicalMaterial({color:'#e4e7eb', metalness:1, roughness:.14, clearcoat:.4, clearcoatRoughness:.1})),
 };
-const shade = (() => { const c = document.createElement('canvas'); c.width = 4; c.height = 64; const g = c.getContext('2d'), gr = g.createLinearGradient(0,0,0,64); gr.addColorStop(0,'#000'); gr.addColorStop(.5,'#fff'); gr.addColorStop(1,'#000'); g.fillStyle = gr; g.fillRect(0,0,4,64); return new THREE.CanvasTexture(c); })();
-const band = new THREE.Mesh(new THREE.CylinderGeometry(1,1,1,48,1,true,-Math.PI/2,Math.PI), new THREE.MeshBasicMaterial({color:0x1a1009, transparent:true, opacity:.22, alphaMap:shade, depthWrite:false})); band.renderOrder = 1;
-band.visible = false;
-rig.add(occ, band, bangle);
-let vtex = null;
+const bangle = new THREE.Mesh(bangleGeo(), mat); bangle.renderOrder = 2;
+const holder = new THREE.Group(); holder.add(bangle);
+const occ = new THREE.Object3D();
+const band = new THREE.Object3D();
+rig.add(occ, band, holder);
+let vtex = null, extra = null, pieceR = 30;
+const KINDS = [{id:'bangle', name:'Vòng ngọc'}, {id:'beads', name:'Vòng hạt ngọc'}, {id:'gold', name:'Lắc vàng'}, {id:'silver', name:'Lắc bạc'}];
+function buildPiece(){
+  if (extra){ holder.remove(extra); extra.geometry.dispose(); extra = null; }
+  bangle.visible = S.kind === 'bangle';
+  pieceR = S.ni/2 + S.day/2;
+  if (S.kind === 'bangle') return;
+  const dm = new THREE.Object3D();
+  if (S.kind === 'beads'){
+    const d = 8, n = Math.max(10, Math.round(2*Math.PI*(S.ni/2 + d/2 - 1)/(d*1.02))), R = n*d*1.02/(2*Math.PI);
+    extra = new THREE.InstancedMesh(new THREE.SphereGeometry(d/2, 28, 18), beadMat, n);
+    const p = PRESETS[S.preset], a = new THREE.Color(p.light), b = new THREE.Color(p.base), c = new THREE.Color();
+    for (let k=0;k<n;k++){
+      const t = k/n*Math.PI*2; dm.position.set(Math.cos(t)*R, 0, Math.sin(t)*R); dm.rotation.set(hash(k,5,1)*6, hash(k,6,1)*6, 0); dm.updateMatrix();
+      extra.setMatrixAt(k, dm.matrix); extra.setColorAt(k, c.copy(a).lerp(b, .25 + .75*hash(k,7,S.preset)));
+    }
+    pieceR = R;
+  } else {
+    const step = 3.3, n = Math.round(2*Math.PI*(S.ni/2*1.04)/step), R = n*step/(2*Math.PI);
+    const geo = new THREE.TorusGeometry(1.55, .42, 10, 28); geo.scale(1.5, 1, 1);
+    extra = new THREE.InstancedMesh(geo, metal[S.kind], n);
+    const X = new THREE.Vector3(1,0,0), tq = new THREE.Quaternion();
+    for (let k=0;k<n;k++){
+      const t = k/n*Math.PI*2, tan = new THREE.Vector3(-Math.sin(t), 0, Math.cos(t));
+      dm.position.set(Math.cos(t)*R, 0, Math.sin(t)*R);
+      dm.quaternion.setFromUnitVectors(X, tan).premultiply(tq.setFromAxisAngle(tan, k%2 ? Math.PI/2 : 0)); dm.updateMatrix();
+      extra.setMatrixAt(k, dm.matrix);
+    }
+    pieceR = R;
+  }
+  extra.instanceMatrix.needsUpdate = true; if (extra.instanceColor) extra.instanceColor.needsUpdate = true;
+  extra.renderOrder = 2; holder.add(extra);
+}
 function applyMaterial(){
   const p = PRESETS[S.preset];
   mat.map = jadeTex(S.preset); mat.transmission = p.trans; mat.roughness = p.rough;
   mat.thickness = S.day; mat.attenuationColor.set(p.base); mat.attenuationDistance = S.day*(p.cotton ? 1.2 : .8); mat.clearcoat = 1; mat.clearcoatRoughness = .04; mat.needsUpdate = true;
+  beadMat.transmission = p.trans*.8; beadMat.roughness = p.rough; beadMat.thickness = 8; beadMat.attenuationColor.set(p.base); beadMat.attenuationDistance = 7; beadMat.needsUpdate = true;
+  if (S.kind === 'beads') buildPiece();
 }
-function rebuild(){ bangle.geometry.dispose(); bangle.geometry = bangleGeo(); applyMaterial(); }
+function rebuild(){ bangle.geometry.dispose(); bangle.geometry = bangleGeo(); buildPiece(); applyMaterial(); }
 
 // ---- light from the camera: average colour + a blurred env made from the frame ----
 const probe = document.createElement('canvas'); probe.width = 128; probe.height = 64;
@@ -226,10 +269,10 @@ function track(raw){
   const g = new THREE.Vector3(0,-1,0).applyQuaternion(pose.q.clone().invert()); g.y = 0;
   const play = Math.max(0, Math.min(rIn-(rx+rz)/2, rIn-Math.max(rx,rz)) - .5);
   off.copy(g.lengthSq() > .04 ? g.normalize().multiplyScalar(play*.8) : g.set(0,0,0));
-  bangle.position.lerp(off, .2);
+  holder.position.lerp(off, .2);
   rig.updateMatrixWorld(true);
-  fadeU.uCZ.value = bangle.getWorldPosition(new THREE.Vector3()).z;
-  fadeU.uRc.value = S.ni/2 + S.day/2; fadeU.uR.value = fadeU.uRc.value * pose.s;
+  fadeU.uCZ.value = holder.getWorldPosition(new THREE.Vector3()).z;
+  fadeU.uRc.value = pieceR; fadeU.uR.value = pieceR * pose.s;
 }
 
 // ---- loop ----
@@ -284,6 +327,8 @@ $('go').addEventListener('click', async () => {
 
 // ---- controls ----
 $('sws').innerHTML = PRESETS.map((p,i) => `<button class="sw" data-i="${i}" aria-pressed="${i===0}"><i style="background:radial-gradient(circle at 35% 30%,${p.light},${p.base} 60%,${p.vein})"></i>${p.name}</button>`).join('');
+$('kinds').innerHTML = KINDS.map((k,i) => `<button class="sw" data-k="${k.id}" aria-pressed="${i===0}" style="padding:6px 14px">${k.name}</button>`).join('');
+$('kinds').addEventListener('click', e => { const b = e.target.closest('.sw'); if (!b) return; S.kind = b.dataset.k; for (const x of $('kinds').children) x.setAttribute('aria-pressed', x === b); $('sws').style.display = (S.kind === 'gold' || S.kind === 'silver') ? 'none' : ''; buildPiece(); applyMaterial(); });
 $('sws').addEventListener('click', e => { const b = e.target.closest('.sw'); if (!b) return; S.preset = +b.dataset.i; for (const x of $('sws').children) x.setAttribute('aria-pressed', x === b); applyMaterial(); });
 for (const id of ['ni','ban','day']) $(id).addEventListener('input', e => { S[id] = +e.target.value; $(id+'V').textContent = `${S[id]} mm`; rebuild(); });
 $('hand').addEventListener('change', e => { const v = +e.target.value; S.hand = v >= 55 && v <= 110 ? v : null; if (!S.hand) e.target.value = ''; });
@@ -301,7 +346,7 @@ $('shot').addEventListener('click', () => {
   c.toBlob(b => { lastShot = b; $('pic').src = URL.createObjectURL(b); $('share').hidden = !navigator.canShare?.({files:[new File([b],'vong.jpg',{type:'image/jpeg'})]}); $('dlg').showModal(); }, 'image/jpeg', .9);
 });
 $('share').addEventListener('click', async () => { try { await navigator.share({files:[new File([lastShot],'thu-vong.jpg',{type:'image/jpeg'})], title:'Thử vòng ngọc'}); } catch {} });
-window.__live = {S, pose, applyMaterial};
+window.__live = {S, pose, applyMaterial, buildPiece};
 }
 </script>
 </body>
