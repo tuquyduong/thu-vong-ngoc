@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Thử vòng ngọc trực tiếp</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* VOICE: gương thử đồ, im lặng, để chiếc vòng nói.
+   IDEA: tấm gương trong tiệm ngọc: camera chiếm trọn màn hình, thông số như thẻ treo.
+   PICTURE: hình camera trực tiếp với vòng 3D bám cổ tay.
+   COLOUR and TYPE: nền đen camera, ngọc xanh thẫm cho khay điều khiển, đỏ triện cho nút chụp; Be Vietnam Pro.
+   LAYOUT: camera toàn màn hình, khay điều khiển dưới đáy, nút chụp ở giữa. */
+:root{color-scheme:dark;--tray:rgba(9,32,25,.86);--seal:#b5332a;--ink:#eef4f0;--mute:#a9bdb3}
+*{box-sizing:border-box;min-width:0}[hidden]{display:none!important}
+html,body{margin:0;height:100%;background:#000;color:var(--ink);font:16px/1.5 "Be Vietnam Pro",system-ui,sans-serif;overflow:hidden}
+#stage{position:fixed;inset:0;display:grid;place-items:center}
+#out{max-width:100vw;max-height:100dvh;width:auto;height:auto;display:block}
+#out.mirror{transform:scaleX(-1)}
+.top{position:fixed;top:0;left:0;right:0;padding:calc(env(safe-area-inset-top) + 10px) 14px 10px;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(#000a,#0000)}
+.top b{font-weight:600}
+.hint{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 60px);transform:translateX(-50%);background:#000a;padding:8px 14px;border-radius:20px;font-size:14px;white-space:nowrap;transition:opacity .3s}
+.tray{position:fixed;left:0;right:0;bottom:0;background:var(--tray);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);padding:12px 14px calc(env(safe-area-inset-bottom) + 12px);border-radius:16px 16px 0 0;display:grid;gap:10px;max-width:640px;margin:0 auto}
+.sws{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:2px}
+.sw{flex:none;scroll-snap-align:start;border:2px solid transparent;border-radius:24px;background:#ffffff14;color:var(--ink);font:500 14px/1 inherit;font-family:inherit;padding:6px 12px 6px 6px;display:flex;align-items:center;gap:8px;min-height:44px;cursor:pointer}
+.sw i{width:30px;height:30px;border-radius:50%;box-shadow:inset 0 -4px 6px #0006,inset 0 3px 5px #fff8}
+.sw[aria-pressed=true]{border-color:#fff}
+.row{display:grid;grid-template-columns:4.6em minmax(0,1fr) 4.4em;align-items:center;gap:10px;font-size:15px}
+.row output{text-align:right;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+input[type=range]{width:100%;accent-color:#e9f2ed;height:30px}
+.more{display:none;gap:10px}.more.on{display:grid}
+.bar{display:grid;grid-template-columns:1fr auto 1fr;align-items:center}
+.ic{justify-self:start;border:0;background:#ffffff1c;color:var(--ink);border-radius:22px;min-height:44px;padding:0 14px;font:500 14px/1 inherit;font-family:inherit;cursor:pointer}
+.ic.r{justify-self:end}
+.shut{width:66px;height:66px;border-radius:50%;border:4px solid #fff;background:var(--seal);cursor:pointer}
+.start{position:fixed;inset:0;display:grid;place-items:center;text-align:center;padding:24px;background:radial-gradient(circle at 50% 40%,#17473a,#050d0a 70%)}
+.start h1{font-size:clamp(26px,7vw,40px);line-height:1.1;margin:0 0 10px;text-wrap:balance}
+.start p{color:var(--mute);margin:0 auto 22px;max-width:30em}
+.btn{font:600 17px/1 inherit;font-family:inherit;border:0;border-radius:12px;padding:16px 22px;min-height:52px;background:var(--seal);color:#fff;cursor:pointer}
+.cal{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--mute);flex-wrap:wrap}
+.cal input{width:5.5em;font:16px inherit;font-family:inherit;padding:8px;border-radius:8px;border:1px solid #ffffff40;background:#0006;color:#fff}
+button:focus-visible,input:focus-visible{outline:3px solid #9fe0bf;outline-offset:2px}
+dialog{border:0;border-radius:14px;padding:14px;max-width:92vw;background:#0d211b;color:var(--ink)}
+dialog img{max-width:100%;max-height:70dvh;display:block;border-radius:8px;margin:0 auto}
+dialog::backdrop{background:#000c}
+.dl{display:flex;gap:10px;justify-content:flex-end;margin-top:10px}
+</style>
+<script type="importmap">{"imports":{"three":"./lib/three.module.js"}}</script>
+</head>
+<body>
+<div id="stage"><canvas id="out"></canvas></div>
+<div class="top"><b>Thử vòng ngọc</b><span id="fps" style="font-size:13px;color:#cfe">&nbsp;</span></div>
+<div class="hint" id="hint">Đưa mu bàn tay và cổ tay vào khung hình</div>
+<section class="tray" aria-label="Điều khiển">
+  <div class="sws" id="sws"></div>
+  <div class="row"><label for="ni">Ni vòng</label><input type="range" id="ni" min="48" max="66" step="0.5" value="56"><output id="niV">56 mm</output></div>
+  <div class="more" id="more">
+    <div class="row"><label for="ban">Bản</label><input type="range" id="ban" min="6" max="20" step="0.5" value="12"><output id="banV">12 mm</output></div>
+    <div class="row"><label for="day">Dày</label><input type="range" id="day" min="5" max="14" step="0.5" value="9"><output id="dayV">9 mm</output></div>
+    <div class="cal"><label for="hand">Bề ngang bàn tay của bạn</label><input id="hand" type="number" inputmode="decimal" min="55" max="110" placeholder="75"><span>mm, đo ngang các khớp ngón</span></div>
+  </div>
+  <div class="bar"><button class="ic" id="moreB" aria-expanded="false">Thông số</button><button class="shut" id="shot" aria-label="Chụp ảnh"></button><button class="ic r" id="flip">Đổi camera</button></div>
+</section>
+<div class="start" id="start"><div>
+  <h1>Đeo thử vòng ngọc ngay trên tay bạn</h1>
+  <p>Bật camera, đưa mu bàn tay vào khung. Vòng hiện đúng kích thước theo ni. Hình ảnh chỉ xử lý trên máy bạn, không gửi đi đâu.</p>
+  <button class="btn" id="go">Bật camera</button>
+  <p id="err" style="margin-top:16px;color:#ffb4a8"></p>
+</div></div>
+<dialog id="dlg"><img id="pic" alt="Ảnh thử vòng"><div class="dl"><button class="ic" id="share" hidden>Chia sẻ</button><form method="dialog"><button class="ic">Đóng</button></form></div><p style="margin:8px 0 0;font-size:14px;color:var(--mute)">Nhấn giữ ảnh để lưu.</p></dialog>
+<video id="cam" playsinline muted hidden></video>
+
+<script type="module">
+import * as THREE from 'three';
+import {RoomEnvironment} from './lib/RoomEnvironment.js';
+import {FilesetResolver, HandLandmarker} from './lib/vision_bundle.mjs';
+{
+const $ = id => document.getElementById(id);
+const PRESETS = [
+  {name:'Xanh táo', base:'#4f9a4f', light:'#b9dcae', vein:'#1d5e36', trans:.32, rough:.2, env:1},
+  {name:'Trắng phiêu hoa', base:'#dfe7dc', light:'#f3f6f0', vein:'#2f8a5c', trans:.36, rough:.18, env:1},
+  {name:'Tím oải hương', base:'#a993c9', light:'#e3d9f0', vein:'#7a5fa6', trans:.3, rough:.2, env:1},
+  {name:'Mặc thuý', base:'#161c19', light:'#26312b', vein:'#070908', trans:0, rough:.16, env:.5},
+];
+const S = {preset:0, ni:56, ban:12, day:9, hand:null, facing:'environment'}, DEFAULT_HAND = 75;
+const video = $('cam'), canvas = $('out');
+let landmarker = null, stream = null, lastT = -1, lost = 99, frame = 0;
+
+// ---- jade texture ----
+const hx = h => [1,3,5].map(i => parseInt(h.slice(i,i+2),16));
+const hash = (x,y,z) => { const h = Math.sin(x*127.1+y*311.7+z*74.7)*43758.5453; return h-Math.floor(h); };
+function vn(x,y,z){const X=Math.floor(x),Y=Math.floor(y),Z=Math.floor(z),fx=x-X,fy=y-Y,fz=z-Z,u=fx*fx*(3-2*fx),v=fy*fy*(3-2*fy),w=fz*fz*(3-2*fz);let r=0;for(let c=0;c<8;c++){const dx=c&1,dy=c>>1&1,dz=c>>2&1;r+=(dx?u:1-u)*(dy?v:1-v)*(dz?w:1-w)*hash(X+dx,Y+dy,Z+dz);}return r;}
+function fbm(x,y,z){let a=.5,s=0;for(let i=0;i<5;i++){s+=a*vn(x,y,z);x*=2.03;y*=2.03;z*=2.03;a*=.5;}return s;}
+const texCache = new Map();
+function jadeTex(i){
+  if (texCache.has(i)) return texCache.get(i);
+  const p = PRESETS[i], W = 1024, H = 96, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d'), im = g.createImageData(W,H), L = hx(p.light), B = hx(p.base), V = hx(p.vein);
+  for (let j=0;j<H;j++) for (let k=0;k<W;k++){
+    const t = k/W*Math.PI*2, x = Math.cos(t)*3+i*7, y = Math.sin(t)*3, z = j/H*2.2;
+    const m = Math.min(1,Math.max(0,(fbm(x,y,z)-.3)/.38)), f = fbm(x*2.2+9,y*2.2,z*2.2), ve = Math.max(0,(f-.55)/.2)**2*.6, o = (j*W+k)*4;
+    for (let q=0;q<3;q++){ const a = L[q]+(B[q]-L[q])*m; im.data[o+q] = a+(V[q]-a)*ve; }
+    im.data[o+3] = 255;
+  }
+  g.putImageData(im,0,0);
+  const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace; tx.wrapS = THREE.RepeatWrapping; tx.anisotropy = 4;
+  texCache.set(i, tx); return tx;
+}
+function bangleGeo(){
+  const a = S.day/2, b = S.ban/2, rc = S.ni/2 + a, pts = [];
+  for (let k=0;k<=64;k++){ const th = -Math.PI/2 - k/64*Math.PI*2; pts.push(new THREE.Vector2(rc + a*Math.cos(th), b*Math.sin(th))); }
+  return new THREE.LatheGeometry(pts, 128);
+}
+
+// ---- scene ----
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, preserveDrawingBuffer:true, powerPreference:'high-performance'});
+renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.setPixelRatio(1);
+const scene = new THREE.Scene(), pmrem = new THREE.PMREMGenerator(renderer);
+const roomEnv = pmrem.fromScene(new RoomEnvironment(), .04).texture; scene.environment = roomEnv;
+const key = new THREE.DirectionalLight(0xffffff, 1); key.position.set(-.3,.8,1); scene.add(key);
+const cam = new THREE.OrthographicCamera(0,1,0,-1,-50000,50000);
+const rig = new THREE.Group(); rig.visible = false; scene.add(rig);
+const mat = new THREE.MeshPhysicalMaterial({ior:1.66, clearcoat:.9, clearcoatRoughness:.06, specularIntensity:.7});
+const bangle = new THREE.Mesh(bangleGeo(), mat); bangle.renderOrder = 2;
+const occ = new THREE.Mesh(new THREE.CylinderGeometry(1,1,1,48), new THREE.MeshBasicMaterial({colorWrite:false})); occ.renderOrder = 0;
+const shade = (() => { const c = document.createElement('canvas'); c.width = 4; c.height = 64; const g = c.getContext('2d'), gr = g.createLinearGradient(0,0,0,64); gr.addColorStop(0,'#000'); gr.addColorStop(.5,'#fff'); gr.addColorStop(1,'#000'); g.fillStyle = gr; g.fillRect(0,0,4,64); return new THREE.CanvasTexture(c); })();
+const band = new THREE.Mesh(new THREE.CylinderGeometry(1,1,1,48,1,true), new THREE.MeshBasicMaterial({color:0x1a1009, transparent:true, opacity:.34, alphaMap:shade, depthWrite:false})); band.renderOrder = 1;
+rig.add(occ, band, bangle);
+let vtex = null;
+function applyMaterial(){
+  const p = PRESETS[S.preset];
+  mat.map = jadeTex(S.preset); mat.transmission = p.trans; mat.roughness = p.rough;
+  mat.thickness = S.day; mat.attenuationColor.set(p.base); mat.attenuationDistance = S.day*.8; mat.needsUpdate = true;
+}
+function rebuild(){ bangle.geometry.dispose(); bangle.geometry = bangleGeo(); applyMaterial(); }
+
+// ---- light from the camera: average colour + a blurred env made from the frame ----
+const probe = document.createElement('canvas'); probe.width = 128; probe.height = 64;
+const pg = probe.getContext('2d', {willReadFrequently:true});
+let envTex = null, lum = .5;
+function sampleLight(){
+  pg.filter = 'blur(6px)'; pg.drawImage(video, 0, 0, 128, 64); pg.filter = 'none';
+  const d = pg.getImageData(0,0,128,64).data; let r=0,g=0,b=0,n=0;
+  for (let i=0;i<d.length;i+=16){ r+=d[i]; g+=d[i+1]; b+=d[i+2]; n++; }
+  r/=n*255; g/=n*255; b/=n*255; lum = .2126*r+.7152*g+.0722*b;
+  key.color.setRGB(.55+.45*r/Math.max(lum,.05)*lum, .55+.45*g/Math.max(lum,.05)*lum, .55+.45*b/Math.max(lum,.05)*lum);
+  key.intensity = .25 + 1.3*lum;
+  const t = new THREE.CanvasTexture(probe); t.mapping = THREE.EquirectangularReflectionMapping; t.colorSpace = THREE.SRGBColorSpace;
+  const e = pmrem.fromEquirectangular(t).texture; t.dispose();
+  envTex?.dispose(); envTex = e; scene.environment = e;
+  mat.envMapIntensity = (.7 + .9*lum) * PRESETS[S.preset].env;
+}
+
+// ---- smoothing ----
+const pose = {c:new THREE.Vector3(), q:new THREE.Quaternion(), s:0, ok:false};
+const off = new THREE.Vector3();
+function track(lm){
+  const W = canvas.width, H = canvas.height;
+  const P = i => new THREE.Vector3(lm[i].x*W, -lm[i].y*H, -lm[i].z*W);
+  const handMM = S.hand || DEFAULT_HAND, s = P(5).distanceTo(P(17)) / (handMM/1.3);
+  const ay = P(0).sub(P(9)).normalize(), ax = P(5).sub(P(17)); ax.addScaledVector(ay, -ax.dot(ay)).normalize();
+  const az = new THREE.Vector3().crossVectors(ax, ay), rot = new THREE.Matrix4().makeBasis(ax, ay, az);
+  const c = P(0).addScaledVector(ay, 10*s), q = new THREE.Quaternion().setFromRotationMatrix(rot);
+  if (!pose.ok){ pose.c.copy(c); pose.q.copy(q); pose.s = s; pose.ok = true; }
+  const move = c.distanceTo(pose.c)/Math.max(pose.s*12,1), a = Math.min(.85, .3 + move*.6);
+  pose.c.lerp(c, a); pose.q.slerp(q, a); pose.s += (s - pose.s)*.12;
+  const wristW = handMM*.68, wristT = handMM*.49, rIn = S.ni/2, rx = Math.min(wristW/2, rIn-2.5), rz = Math.min(wristT/2, rIn-2.5);
+  rig.position.copy(pose.c); rig.quaternion.copy(pose.q); rig.scale.setScalar(pose.s);
+  occ.scale.set(rx, 200, rz); band.scale.set(rx*1.02, S.ban*1.6, rz*1.02);
+  const g = new THREE.Vector3(0,-1,0).applyQuaternion(pose.q.clone().invert()); g.y = 0;
+  const play = Math.max(0, Math.min(rIn-(rx+rz)/2, rIn-Math.max(rx,rz)) - .5);
+  off.copy(g.lengthSq() > .04 ? g.normalize().multiplyScalar(play*.8) : g.set(0,0,0));
+  bangle.position.lerp(off, .2);
+}
+
+// ---- loop ----
+let t0 = performance.now(), nf = 0;
+function loop(){
+  if (video.readyState >= 2){
+    if (canvas.width !== video.videoWidth){
+      renderer.setSize(video.videoWidth, video.videoHeight, false);
+      Object.assign(cam, {left:0, right:video.videoWidth, top:0, bottom:-video.videoHeight}); cam.updateProjectionMatrix();
+    }
+    if (video.currentTime !== lastT && landmarker){
+      lastT = video.currentTime;
+      const r = landmarker.detectForVideo(video, performance.now());
+      if (r.landmarks?.length){ track(r.landmarks[0]); lost = 0; } else lost++;
+      if (lost > 6) pose.ok = false;
+      rig.visible = lost <= 6;
+      $('hint').style.opacity = rig.visible ? 0 : 1;
+      if (frame++ % 20 === 0) sampleLight();
+      nf++; const now = performance.now(); if (now - t0 > 1000){ $('fps').textContent = nf + ' khung/giây'; nf = 0; t0 = now; }
+    }
+    renderer.render(scene, cam);
+  }
+  requestAnimationFrame(loop);
+}
+
+async function initModel(){
+  const files = await FilesetResolver.forVisionTasks(new URL('./wasm', location.href).href);
+  const {default:b64} = await import('./models/hand_landmarker.js');
+  const bin = atob(b64), buf = new Uint8Array(bin.length); for (let i=0;i<bin.length;i++) buf[i] = bin.charCodeAt(i);
+  const o = d => ({baseOptions:{modelAssetBuffer:buf, delegate:d}, runningMode:'VIDEO', numHands:1, minHandDetectionConfidence:.5, minTrackingConfidence:.5});
+  try { landmarker = await HandLandmarker.createFromOptions(files, o('GPU')); } catch { landmarker = await HandLandmarker.createFromOptions(files, o('CPU')); }
+}
+async function startCam(){
+  stream?.getTracks().forEach(t => t.stop());
+  stream = await navigator.mediaDevices.getUserMedia({audio:false, video:{facingMode:S.facing, width:{ideal:1280}, height:{ideal:720}}});
+  video.srcObject = stream; await video.play();
+  canvas.classList.toggle('mirror', S.facing === 'user');
+  if (!vtex){ vtex = new THREE.VideoTexture(video); vtex.colorSpace = THREE.SRGBColorSpace; scene.background = vtex; }
+  pose.ok = false;
+}
+$('go').addEventListener('click', async () => {
+  $('go').disabled = true; $('go').textContent = 'Đang mở camera…';
+  try {
+    await startCam();
+    $('go').textContent = 'Đang tải bộ nhận diện tay…';
+    await initModel(); rebuild(); $('start').hidden = true; loop();
+  } catch (e) {
+    console.error(e); $('go').disabled = false; $('go').textContent = 'Thử lại';
+    $('err').textContent = e?.name === 'NotAllowedError' ? 'Bạn chưa cho phép dùng camera. Hãy cho phép trong cài đặt trình duyệt rồi thử lại.' : 'Không mở được camera trên trình duyệt này. Hãy mở link bằng Safari hoặc Chrome.';
+  }
+});
+
+// ---- controls ----
+$('sws').innerHTML = PRESETS.map((p,i) => `<button class="sw" data-i="${i}" aria-pressed="${i===0}"><i style="background:radial-gradient(circle at 35% 30%,${p.light},${p.base} 60%,${p.vein})"></i>${p.name}</button>`).join('');
+$('sws').addEventListener('click', e => { const b = e.target.closest('.sw'); if (!b) return; S.preset = +b.dataset.i; for (const x of $('sws').children) x.setAttribute('aria-pressed', x === b); applyMaterial(); });
+for (const id of ['ni','ban','day']) $(id).addEventListener('input', e => { S[id] = +e.target.value; $(id+'V').textContent = `${S[id]} mm`; rebuild(); });
+$('hand').addEventListener('change', e => { const v = +e.target.value; S.hand = v >= 55 && v <= 110 ? v : null; if (!S.hand) e.target.value = ''; });
+$('moreB').addEventListener('click', e => { const on = $('more').classList.toggle('on'); e.currentTarget.setAttribute('aria-expanded', on); });
+$('flip').addEventListener('click', async () => { S.facing = S.facing === 'user' ? 'environment' : 'user'; try { await startCam(); } catch {} });
+let lastShot = null;
+$('shot').addEventListener('click', () => {
+  const W = canvas.width, H = canvas.height, f = Math.max(22, Math.round(W/34)), c = document.createElement('canvas');
+  c.width = W; c.height = H + f*2; const g = c.getContext('2d');
+  if (S.facing === 'user'){ g.save(); g.translate(W,0); g.scale(-1,1); g.drawImage(canvas,0,0); g.restore(); } else g.drawImage(canvas,0,0);
+  g.fillStyle = '#0f3b2f'; g.fillRect(0,H,W,f*2); g.fillStyle = '#fff'; g.font = `600 ${f}px "Be Vietnam Pro",sans-serif`; g.textBaseline = 'middle';
+  g.fillText(`${PRESETS[S.preset].name} · ni ${S.ni} · bản ${S.ban} · dày ${S.day} mm`, f*.6, H+f);
+  c.toBlob(b => { lastShot = b; $('pic').src = URL.createObjectURL(b); $('share').hidden = !navigator.canShare?.({files:[new File([b],'vong.jpg',{type:'image/jpeg'})]}); $('dlg').showModal(); }, 'image/jpeg', .9);
+});
+$('share').addEventListener('click', async () => { try { await navigator.share({files:[new File([lastShot],'thu-vong.jpg',{type:'image/jpeg'})], title:'Thử vòng ngọc'}); } catch {} });
+window.__live = {S, pose};
+}
+</script>
+</body>
+</html>
