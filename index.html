@@ -203,7 +203,7 @@ function track(raw){
   const P = i => new THREE.Vector3(lm[i].x*W, -lm[i].y*H, 0);
   const handMM = S.hand || DEFAULT_HAND;
   // hand breadth in pixels, from two directions so turning the hand does not shrink the bangle
-  const breadthPx = Math.max(P(5).distanceTo(P(17))*1.3, P(0).distanceTo(P(9))*.95);
+  const breadthPx = Math.max(P(5).distanceTo(P(17))*1.3, P(0).distanceTo(P(9))*.78);
   let s = breadthPx / handMM;
   if (S.fit){ const wristPx = breadthPx*.7, wantIn = wristPx*1.12; s = wantIn / S.ni; }
   // forearm direction in the picture: from the knuckle line back through the wrist
