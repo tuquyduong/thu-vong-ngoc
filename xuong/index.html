@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Xưởng thiết kế</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* VOICE: bàn kim hoàn yên tĩnh, chính xác từng milimét.
+   IDEA: khay nhung trên bàn thợ: mẫu 3D ở giữa, phiếu thông số như phiếu gia công.
+   PICTURE: món trang sức 3D xoay được, nền ngà, bóng đổ mềm, thước 10 mm.
+   COLOUR and TYPE: ngà làm nền, xanh ngọc thẫm cho khay, đỏ triện cho nút chính; Be Vietnam Pro.
+   LAYOUT: khung 3D trên cùng (dưới 900px), bảng thông số bên dưới; màn rộng thì hai cột. */
+:root{color-scheme:light;--bg:#f3efe6;--ink:#17231e;--mute:#5f6d66;--tray:#0f3b2f;--card:#fff;--line:#ddd6c8;--seal:#b5332a}
+*{box-sizing:border-box;min-width:0}[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Be Vietnam Pro",system-ui,sans-serif;overflow-x:clip}
+header{padding:calc(env(safe-area-inset-top) + 14px) 16px 8px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+h1{margin:0;font-size:clamp(22px,5vw,30px);line-height:1.1}
+.tag{font-size:13px;color:#fff;background:var(--seal);padding:2px 8px;border-radius:4px}
+main{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;padding:0 16px 32px;max-width:1240px;margin:0 auto}
+@media(min-width:900px){main{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)}.view{position:sticky;top:12px;align-self:start}}
+.view{position:relative;border-radius:14px;overflow:hidden;background:#ebe5d8;height:min(62vh,620px)}
+.view canvas{width:100%;height:100%;display:block;touch-action:none}
+.dims{position:absolute;left:10px;right:10px;bottom:10px;background:#fffd;border-radius:8px;padding:6px 10px;font-size:14px;font-variant-numeric:tabular-nums}
+.hint{position:absolute;top:10px;left:10px;font-size:13px;color:var(--mute);background:#fffc;padding:3px 8px;border-radius:6px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:16px;align-self:start}
+.panel h2{font-size:16px;margin:0 0 8px;font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:1.5px solid var(--line);background:#fff;color:var(--ink);border-radius:22px;padding:8px 14px;min-height:42px;font:500 15px/1.2 inherit;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.chip[aria-pressed=true]{border-color:var(--tray);background:var(--tray);color:#fff}
+.chip i{width:20px;height:20px;border-radius:50%;display:inline-block;box-shadow:inset 0 -3px 5px #0004,inset 0 2px 4px #fff8}
+.row{display:grid;grid-template-columns:6.5em minmax(0,1fr) 4.6em;align-items:center;gap:10px;font-size:15px}
+.row output{text-align:right;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+input[type=range]{width:100%;accent-color:var(--tray);height:30px}
+.up{display:flex;gap:12px;align-items:center}
+.up img{width:64px;height:64px;border-radius:50%;object-fit:cover;border:1px solid var(--line);background:#eee}
+.btn{font:600 16px/1 inherit;font-family:inherit;border:0;border-radius:10px;padding:14px 18px;min-height:48px;background:var(--seal);color:#fff;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.btn.ghost{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
+.note{font-size:13px;color:var(--mute);margin:6px 0 0}
+button:focus-visible,input:focus-visible,label.btn:focus-within{outline:3px solid #3f9a73;outline-offset:2px}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+dialog{border:0;border-radius:14px;padding:14px;max-width:min(94vw,820px);background:#fff}
+dialog img{width:100%;height:auto;display:block;border-radius:8px}
+dialog::backdrop{background:#000a}
+.acts{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-top:10px}
+</style>
+<script type="importmap">{"imports":{"three":"../lib/three.module.js"}}</script>
+</head>
+<body>
+<header><h1>Xưởng thiết kế</h1><span class="tag">Bản demo</span></header>
+<main>
+  <section class="view" aria-label="Mẫu 3D">
+    <canvas id="cv"></canvas>
+    <span class="hint">Vuốt để xoay · chụm hai ngón để phóng to</span>
+    <div class="dims" id="dims"></div>
+  </section>
+  <aside class="panel" aria-label="Thông số thiết kế">
+    <div><h2>Sản phẩm</h2><div class="chips" id="kind"></div></div>
+    <div>
+      <h2>Viên đá</h2>
+      <div class="up"><img id="thumb" alt=""><div><label class="btn ghost" for="file">Tải ảnh đá rời</label><p class="note">Chụp thẳng từ trên xuống, đá nằm giữa ảnh, nền trơn.</p></div></div>
+      <input id="file" class="vh" type="file" accept="image/*">
+      <div class="row" id="zoomRow" hidden style="margin-top:8px"><label for="zoom">Phóng ảnh</label><input type="range" id="zoom" min="1" max="4" step="0.05" value="1.6"><output id="zoomV">1.6×</output></div>
+      <div class="chips" id="gems" style="margin-top:10px"></div>
+    </div>
+    <div>
+      <h2>Hình dáng và kích thước đá</h2>
+      <div class="chips" id="shape" style="margin-bottom:8px"></div>
+      <div class="row"><label for="L">Dài</label><input type="range" id="L" min="4" max="30" step="0.5" value="12"><output id="LV">12 mm</output></div>
+      <div class="row"><label for="W">Rộng</label><input type="range" id="W" min="4" max="24" step="0.5" value="10"><output id="WV">10 mm</output></div>
+      <div class="row"><label for="H">Cao</label><input type="range" id="H" min="2" max="12" step="0.5" value="5"><output id="HV">5 mm</output></div>
+    </div>
+    <div><h2>Kiểu ổ</h2><div class="chips" id="setting"></div></div>
+    <div><h2>Kim loại</h2><div class="chips" id="metal"></div></div>
+    <div id="sizeBox">
+      <h2 id="sizeT">Cỡ</h2>
+      <div class="row"><label for="size" id="sizeL">Đường kính trong</label><input type="range" id="size" min="14" max="23" step="0.25" value="17"><output id="sizeV">17 mm</output></div>
+    </div>
+    <div class="acts" style="justify-content:flex-start"><button class="btn" id="shots">Xuất ảnh 4 góc</button><button class="btn ghost" id="reset">Góc nhìn chính</button></div>
+  </aside>
+</main>
+<dialog id="dlg"><img id="out" alt="Ảnh 4 góc của mẫu"><div class="acts"><a class="btn ghost" id="dl" download="mau-thiet-ke.jpg">Tải ảnh</a><form method="dialog"><button class="btn">Đóng</button></form></div></dialog>
+
+<script type="module">
+import * as THREE from 'three';
+import {RoomEnvironment} from '../lib/RoomEnvironment.js';
+import {OrbitControls} from '../lib/OrbitControls.js';
+{
+const $ = id => document.getElementById(id);
+const KINDS = [{id:'ring', name:'Nhẫn'}, {id:'pendant', name:'Mặt dây chuyền'}, {id:'bracelet', name:'Lắc tay'}];
+const GEMS = [
+  {id:'jade', name:'Ngọc xanh', a:'#cfe8c6', b:'#3f934a', v:'#1b5e33', trans:.35},
+  {id:'white', name:'Ngọc trắng', a:'#f7f9f5', b:'#dfe8dc', v:'#5ea57a', trans:.45},
+  {id:'ruby', name:'Hồng ngọc', a:'#ff8c9a', b:'#b0122d', v:'#5c0614', trans:.3},
+  {id:'sapphire', name:'Lam ngọc', a:'#8fb0ff', b:'#1d3fa6', v:'#0b1a55', trans:.3},
+  {id:'amethyst', name:'Thạch anh tím', a:'#e2c9f5', b:'#7a3fb0', v:'#3e1466', trans:.5},
+];
+const METALS = [{id:'y', name:'Vàng 18K', c:'#e6c068'}, {id:'w', name:'Vàng trắng', c:'#e6e8ec'}, {id:'r', name:'Vàng hồng', c:'#e8b39a'}];
+const SETTINGS = [{id:'bezel', name:'Ổ bao'}, {id:'p4', name:'4 chấu'}, {id:'p6', name:'6 chấu'}];
+const SHAPES = [{id:'oval', name:'Bầu dục'}, {id:'round', name:'Tròn'}];
+const S = {kind:'ring', gem:'jade', metal:'y', setting:'bezel', shape:'oval', L:12, W:10, H:5, ring:17, chain:170, photo:null, zoom:1.6};
+
+// ---- renderer, studio ----
+const cv = $('cv');
+const renderer = new THREE.WebGLRenderer({canvas:cv, antialias:true, preserveDrawingBuffer:true});
+renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene(); scene.background = new THREE.Color('#ebe5d8');
+const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(), .03).texture;
+const cam = new THREE.PerspectiveCamera(28, 1, .5, 2000);
+const ctr = new OrbitControls(cam, cv); ctr.enableDamping = true; ctr.minDistance = 20; ctr.maxDistance = 600;
+const sun = new THREE.DirectionalLight(0xfff4e6, 1.6); sun.position.set(-60, 160, 90); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, {left:-90, right:90, top:90, bottom:-90, near:10, far:500}); sun.shadow.radius = 6; scene.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(800, 800), new THREE.ShadowMaterial({opacity:.16})); ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; scene.add(ground);
+const piece = new THREE.Group(); scene.add(piece);
+
+// ---- materials ----
+const metalMat = new THREE.MeshPhysicalMaterial({metalness:1, roughness:.16, clearcoat:.3, clearcoatRoughness:.12});
+const gemMat = new THREE.MeshPhysicalMaterial({roughness:.06, clearcoat:1, clearcoatRoughness:.03, ior:1.62, specularIntensity:.8});
+const hx = h => [1,3,5].map(i => parseInt(h.slice(i,i+2),16));
+const hash = (x,y,z) => { const h = Math.sin(x*127.1+y*311.7+z*74.7)*43758.5453; return h-Math.floor(h); };
+function vn(x,y,z){const X=Math.floor(x),Y=Math.floor(y),Z=Math.floor(z),fx=x-X,fy=y-Y,fz=z-Z,u=fx*fx*(3-2*fx),v=fy*fy*(3-2*fy),w=fz*fz*(3-2*fz);let r=0;for(let c=0;c<8;c++){const dx=c&1,dy=c>>1&1,dz=c>>2&1;r+=(dx?u:1-u)*(dy?v:1-v)*(dz?w:1-w)*hash(X+dx,Y+dy,Z+dz);}return r;}
+function fbm(x,y,z){let a=.5,s=0;for(let i=0;i<5;i++){s+=a*vn(x,y,z);x*=2.03;y*=2.03;z*=2.03;a*=.5;}return s;}
+const texCache = {};
+function gemTex(g){
+  if (texCache[g.id]) return texCache[g.id];
+  const N = 256, c = document.createElement('canvas'); c.width = c.height = N; const ctx = c.getContext('2d'), im = ctx.createImageData(N,N), A = hx(g.a), B = hx(g.b), V = hx(g.v);
+  for (let j=0;j<N;j++) for (let i=0;i<N;i++){
+    const m = Math.min(1, Math.max(0, (fbm(i/50, j/50, 3)-.3)/.4)), ve = Math.max(0, (fbm(i/30+9, j/30, 7)-.56)/.2)**2*.5, o = (j*N+i)*4;
+    for (let q=0;q<3;q++){ const v = A[q]+(B[q]-A[q])*m; im.data[o+q] = v+(V[q]-v)*ve; } im.data[o+3] = 255;
+  }
+  ctx.putImageData(im,0,0); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return texCache[g.id] = t;
+}
+let photoTex = null, photoAvg = '#888888';
+function makePhotoTex(){
+  if (!S.photo) return;
+  const N = 512, c = document.createElement('canvas'); c.width = c.height = N; const g = c.getContext('2d'), im = S.photo;
+  const side = Math.min(im.width, im.height)/S.zoom;
+  g.drawImage(im, (im.width-side)/2, (im.height-side)/2, side, side, 0, 0, N, N);
+  const d = g.getImageData(N*.35, N*.35, N*.3, N*.3).data; let r=0, gg=0, b=0, n=0;
+  for (let i=0;i<d.length;i+=16){ r+=d[i]; gg+=d[i+1]; b+=d[i+2]; n++; }
+  photoAvg = '#' + [r,gg,b].map(v => Math.round(v/n).toString(16).padStart(2,'0')).join('');
+  photoTex?.dispose(); photoTex = new THREE.CanvasTexture(c); photoTex.colorSpace = THREE.SRGBColorSpace;
+  $('thumb').src = c.toDataURL('image/jpeg', .8);
+}
+function applyMats(){
+  metalMat.color.set(METALS.find(m => m.id === S.metal).c);
+  const g = GEMS.find(x => x.id === S.gem);
+  if (S.photo && photoTex){ gemMat.map = photoTex; gemMat.transmission = .15; gemMat.attenuationColor.set(photoAvg); }
+  else { gemMat.map = gemTex(g); gemMat.transmission = g.trans; gemMat.attenuationColor.set(g.b); }
+  gemMat.thickness = S.H; gemMat.attenuationDistance = S.H*1.2; gemMat.needsUpdate = true;
+}
+
+// ---- geometry, all in millimetres; a setting is built with the stone facing +Y and its girdle at y = 0 ----
+function cabochon(L, W, H){
+  const g = new THREE.SphereGeometry(1, 72, 36, 0, Math.PI*2, 0, Math.PI/2); g.scale(L/2, H, W/2);
+  const p = g.attributes.position, uv = g.attributes.uv;
+  for (let i=0;i<p.count;i++) uv.setXY(i, p.getX(i)/L+.5, .5-p.getZ(i)/W);
+  g.computeVertexNormals(); return g;
+}
+const mesh = (geo, m) => { const x = new THREE.Mesh(geo, m); x.castShadow = true; x.receiveShadow = true; return x; };
+function setting(){
+  const grp = new THREE.Group(), L = S.L, W = S.shape === 'round' ? S.L : S.W, H = S.H, a = L/2 + .05, k = W/L;
+  const stone = mesh(cabochon(L, W, H), gemMat); stone.position.y = .02; grp.add(stone);
+  if (S.setting === 'bezel'){
+    const wall = .7, h = Math.min(H*.32, 2.2);
+    const pts = [[a, -1.4], [a+wall, -1.4], [a+wall, h-.25], [a+wall*.55, h], [a, h-.2], [a, -1.4]].map(([x,y]) => new THREE.Vector2(x,y));
+    const g = new THREE.LatheGeometry(pts, 120); g.scale(1, 1, k); grp.add(mesh(g, metalMat));
+    const base = new THREE.CylinderGeometry(a+wall, a+wall*.6, 1, 96); base.scale(1, 1, k); const bm = mesh(base, metalMat); bm.position.y = -1.9; grp.add(bm);
+  } else {
+    const n = S.setting === 'p4' ? 4 : 6, off = n === 4 ? Math.PI/4 : 0, tipY = Math.min(H*.42, 3);
+    for (let i=0;i<n;i++){
+      const t = off + i/n*Math.PI*2, x = Math.cos(t), z = Math.sin(t)*k;
+      const path = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(x*(a-.6), -3.2, z*(a-.6)), new THREE.Vector3(x*(a+.45), -.6, z*(a+.45)),
+        new THREE.Vector3(x*(a+.35), tipY*.6, z*(a+.35)), new THREE.Vector3(x*(a-.35), tipY, z*(a-.35))]);
+      grp.add(mesh(new THREE.TubeGeometry(path, 24, .42, 10), metalMat));
+      const tip = mesh(new THREE.SphereGeometry(.5, 16, 12), metalMat); tip.position.set(x*(a-.35), tipY, z*(a-.35)); grp.add(tip);
+    }
+    const gal = new THREE.TorusGeometry(a-.2, .35, 10, 96); gal.rotateX(Math.PI/2); gal.scale(1, 1, k); const gm = mesh(gal, metalMat); gm.position.y = -1.5; grp.add(gm);
+  }
+  return grp;
+}
+function chainLinks(pointsFn, n, link=1.3){
+  const geo = new THREE.TorusGeometry(link, link*.28, 8, 20); geo.scale(1.5, 1, 1);
+  const im = new THREE.InstancedMesh(geo, metalMat, n); im.castShadow = true;
+  const dm = new THREE.Object3D(), X = new THREE.Vector3(1,0,0), q = new THREE.Quaternion();
+  for (let i=0;i<n;i++){
+    const [p, tan] = pointsFn(i/n); dm.position.copy(p);
+    dm.quaternion.setFromUnitVectors(X, tan).premultiply(q.setFromAxisAngle(tan, i%2 ? Math.PI/2 : 0)); dm.updateMatrix(); im.setMatrixAt(i, dm.matrix);
+  }
+  return im;
+}
+
+let lift = 0;
+function build(){
+  piece.clear();
+  const W = S.shape === 'round' ? S.L : S.W;
+  if (S.kind === 'ring'){
+    const d = S.ring, w = 2.2, t = 1.7, R = d/2 + t/2;
+    const band = new THREE.TorusGeometry(R, t/2, 28, 200); band.scale(1, 1, w/t); piece.add(mesh(band, metalMat));
+    const st = setting(); st.position.y = d/2 + t + 1.6; st.rotation.y = Math.PI/2; piece.add(st);
+    lift = R + t/2; piece.rotation.set(0, 0, 0); piece.position.y = lift;
+  } else if (S.kind === 'pendant'){
+    const st = setting(); st.rotation.x = Math.PI/2; piece.add(st);
+    const top = W/2 + 1.6;
+    const bail = new THREE.TorusGeometry(1.7, .55, 14, 40); bail.rotateY(Math.PI/2); const bm = mesh(bail, metalMat); bm.position.set(0, top + 1.6, -.8); piece.add(bm);
+    const len = 46, ang = .32, n = Math.round(len/2.2);
+    for (const sgn of [-1, 1]){
+      const dir = new THREE.Vector3(sgn*Math.sin(ang), Math.cos(ang), 0), start = new THREE.Vector3(0, top + 3, -.8);
+      piece.add(chainLinks(f => [start.clone().addScaledVector(dir, f*len), dir.clone()], n, .9));
+    }
+    lift = S.L/2 + 4; piece.rotation.set(-Math.PI/2 + .05, 0, 0); piece.position.y = S.H*.4 + 2.2;
+  } else {
+    const R = S.chain/(2*Math.PI), gap = (S.L/2 + 3)/R, n = Math.round(S.chain/2.6);
+    const ptsFn = f => { const t = gap + f*(Math.PI*2 - 2*gap) + Math.PI/2; return [new THREE.Vector3(Math.cos(t)*R, 0, Math.sin(t)*R), new THREE.Vector3(-Math.sin(t), 0, Math.cos(t))]; };
+    piece.add(chainLinks(ptsFn, n));
+    const st = setting(); st.position.set(0, 2.2, R); piece.add(st);
+    for (const sgn of [-1, 1]){ const jr = mesh(new THREE.TorusGeometry(1.2, .35, 10, 24), metalMat); jr.position.set(sgn*(S.L/2 + 1.6), .2, R - .4); jr.rotation.y = Math.PI/2; piece.add(jr); }
+    piece.rotation.set(0, 0, 0); piece.position.y = 1.5;
+  }
+  piece.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  applyMats(); dims(); frame(false);
+}
+function dims(){
+  const W = S.shape === 'round' ? S.L : S.W, st = SETTINGS.find(x => x.id === S.setting).name, me = METALS.find(x => x.id === S.metal).name;
+  const size = S.kind === 'ring' ? ` · ni ${S.ring} mm` : S.kind === 'bracelet' ? ` · dài ${S.chain/10} cm` : ' · dây 45 cm';
+  $('dims').textContent = `Đá ${S.L} × ${W} × ${S.H} mm · ${st} · ${me}${size}`;
+}
+
+// ---- framing and views ----
+function frame(keepAngle){
+  const box = new THREE.Box3().setFromObject(piece), c = box.getCenter(new THREE.Vector3()), r = box.getSize(new THREE.Vector3()).length()/2;
+  const dist = r / Math.sin(THREE.MathUtils.degToRad(cam.fov/2)) * 1.05;
+  ctr.target.copy(c);
+  if (!keepAngle){ const dir = new THREE.Vector3(.55, .55, 1).normalize(); cam.position.copy(c).addScaledVector(dir, dist); }
+  cam.near = dist/50; cam.far = dist*20; cam.updateProjectionMatrix(); ctr.update();
+}
+function resize(){ const w = cv.clientWidth, h = cv.clientHeight; renderer.setSize(w, h, false); cam.aspect = w/h; cam.updateProjectionMatrix(); }
+new ResizeObserver(resize).observe(cv);
+(function loop(){ ctr.update(); renderer.render(scene, cam); requestAnimationFrame(loop); })();
+
+$('shots').addEventListener('click', () => {
+  const views = [['Chính diện', 0, .2], ['Nghiêng 45°', .8, .45], ['Cạnh bên', 1.57, .12], ['Từ trên xuống', 0, 1.35]];
+  const N = 800, foot = 110, out = document.createElement('canvas'); out.width = N*2; out.height = N*2 + foot;
+  const g = out.getContext('2d'); g.fillStyle = '#ebe5d8'; g.fillRect(0, 0, out.width, out.height);
+  const save = {pos:cam.position.clone(), aspect:cam.aspect, w:cv.clientWidth, h:cv.clientHeight};
+  renderer.setPixelRatio(1); renderer.setSize(N, N, false); cam.aspect = 1; cam.updateProjectionMatrix();
+  const box = new THREE.Box3().setFromObject(piece), c = box.getCenter(new THREE.Vector3()), r = box.getSize(new THREE.Vector3()).length()/2;
+  const dist = r / Math.sin(THREE.MathUtils.degToRad(cam.fov/2)) * 1.08;
+  views.forEach(([name, az, el], i) => {
+    cam.position.set(c.x + dist*Math.cos(el)*Math.sin(az), c.y + dist*Math.sin(el), c.z + dist*Math.cos(el)*Math.cos(az)); cam.lookAt(c);
+    renderer.render(scene, cam);
+    const x = (i%2)*N, y = Math.floor(i/2)*N; g.drawImage(cv, x, y, N, N);
+    const pxPerMM = N / (2*dist*Math.tan(THREE.MathUtils.degToRad(cam.fov/2)));
+    g.fillStyle = '#17231e'; g.font = '600 26px "Be Vietnam Pro", sans-serif'; g.fillText(name, x+24, y+42);
+    g.fillRect(x+24, y+N-40, pxPerMM*10, 5); g.font = '500 20px "Be Vietnam Pro", sans-serif'; g.fillText('10 mm', x+24, y+N-52);
+  });
+  g.fillStyle = '#0f3b2f'; g.fillRect(0, N*2, out.width, foot); g.fillStyle = '#fff'; g.font = '600 30px "Be Vietnam Pro", sans-serif'; g.fillText($('dims').textContent, 28, N*2 + 66);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); resize(); cam.position.copy(save.pos); cam.updateProjectionMatrix(); ctr.update();
+  const url = out.toDataURL('image/jpeg', .9); $('out').src = url; $('dl').href = url; $('dlg').showModal();
+});
+$('reset').addEventListener('click', () => frame(false));
+
+// ---- controls ----
+const chips = (id, list, key, after) => {
+  $(id).innerHTML = list.map(x => `<button class="chip" data-v="${x.id}" aria-pressed="${S[key]===x.id}">${x.c ? `<i style="background:${x.c}"></i>` : x.a ? `<i style="background:radial-gradient(circle at 35% 30%,${x.a},${x.b} 60%,${x.v})"></i>` : ''}${x.name}</button>`).join('');
+  $(id).addEventListener('click', e => { const b = e.target.closest('.chip'); if (!b) return; S[key] = b.dataset.v; for (const x of $(id).children) x.setAttribute('aria-pressed', x === b); after(); });
+};
+chips('kind', KINDS, 'kind', () => { sizeUI(); build(); });
+chips('gems', GEMS, 'gem', () => { S.photo = null; $('thumb').removeAttribute('src'); $('zoomRow').hidden = true; applyMats(); });
+chips('shape', SHAPES, 'shape', () => { $('W').disabled = S.shape === 'round'; build(); });
+chips('setting', SETTINGS, 'setting', build);
+chips('metal', METALS, 'metal', () => { applyMats(); dims(); });
+for (const id of ['L','W','H']) $(id).addEventListener('input', e => { S[id] = +e.target.value; $(id+'V').textContent = `${S[id]} mm`; build(); });
+function sizeUI(){
+  $('sizeBox').hidden = S.kind === 'pendant';
+  const s = $('size');
+  if (S.kind === 'ring'){ $('sizeT').textContent = 'Cỡ nhẫn'; $('sizeL').textContent = 'Đường kính trong'; Object.assign(s, {min:14, max:23, step:.25}); s.value = S.ring; $('sizeV').textContent = `${S.ring} mm`; }
+  else { $('sizeT').textContent = 'Cỡ lắc'; $('sizeL').textContent = 'Chiều dài'; Object.assign(s, {min:140, max:210, step:5}); s.value = S.chain; $('sizeV').textContent = `${S.chain/10} cm`; }
+}
+$('size').addEventListener('input', e => { const v = +e.target.value; if (S.kind === 'ring'){ S.ring = v; $('sizeV').textContent = `${v} mm`; } else { S.chain = v; $('sizeV').textContent = `${v/10} cm`; } build(); });
+$('file').addEventListener('change', async e => {
+  const f = e.target.files?.[0]; if (!f) return; e.target.value = '';
+  S.photo = await createImageBitmap(f, {imageOrientation:'from-image'}); $('zoomRow').hidden = false;
+  for (const x of $('gems').children) x.setAttribute('aria-pressed', 'false');
+  makePhotoTex(); applyMats();
+});
+$('zoom').addEventListener('input', e => { S.zoom = +e.target.value; $('zoomV').textContent = `${S.zoom.toFixed(1)}×`; makePhotoTex(); applyMats(); });
+sizeUI(); build();
+window.__xuong = {S, build, frame};
+}
+</script>
+</body>
+</html>
