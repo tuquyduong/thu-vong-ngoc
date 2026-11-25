@@ -78,10 +78,12 @@ import {FilesetResolver, HandLandmarker} from './lib/vision_bundle.mjs';
 {
 const $ = id => document.getElementById(id);
 const PRESETS = [
-  {name:'Xanh táo', base:'#4f9a4f', light:'#b9dcae', vein:'#1d5e36', trans:.32, rough:.2, env:1},
-  {name:'Trắng phiêu hoa', base:'#dfe7dc', light:'#f3f6f0', vein:'#2f8a5c', trans:.36, rough:.18, env:1},
-  {name:'Tím oải hương', base:'#a993c9', light:'#e3d9f0', vein:'#7a5fa6', trans:.3, rough:.2, env:1},
-  {name:'Mặc thuý', base:'#161c19', light:'#26312b', vein:'#070908', trans:0, rough:.16, env:.5},
+  {name:'Xanh táo', base:'#3d9446', light:'#9fd59c', vein:'#1b6430', trans:.5, rough:.09, env:1, cotton:0, specks:0},
+  {name:'Băng phiêu hoa', base:'#dce8df', light:'#f6f8f5', vein:'#2f8a57', trans:.62, rough:.07, env:1, cotton:.55, specks:0},
+  {name:'Bích ngọc', base:'#2c5a37', light:'#4f8259', vein:'#193a22', trans:.16, rough:.12, env:.9, cotton:0, specks:260},
+  {name:'Tím oải hương', base:'#a68fc6', light:'#e2d7ef', vein:'#755aa0', trans:.42, rough:.1, env:1, cotton:.25, specks:0},
+  {name:'Vàng mật', base:'#c3863a', light:'#ecc883', vein:'#8a531f', trans:.38, rough:.1, env:1, cotton:0, specks:0},
+  {name:'Mặc thuý', base:'#141a17', light:'#25302a', vein:'#060807', trans:0, rough:.1, env:.5, cotton:0, specks:0},
 ];
 const S = {preset:0, ni:56, ban:12, day:9, hand:null, facing:'environment'}, DEFAULT_HAND = 75;
 const video = $('cam'), canvas = $('out');
@@ -104,6 +106,20 @@ function jadeTex(i){
     im.data[o+3] = 255;
   }
   g.putImageData(im,0,0);
+  // cotton-like white clouds (bông) and dark specks (chấm đen of nephrite)
+  if (p.cotton){
+    const cl = g.createImageData(W,H);
+    for (let j=0;j<H;j++) for (let k=0;k<W;k++){
+      const t = k/W*Math.PI*2, v = fbm(Math.cos(t)*4+40+i, Math.sin(t)*4, j/H*3), a = Math.max(0, (v-.52)/.18), o = (j*W+k)*4;
+      cl.data[o] = cl.data[o+1] = cl.data[o+2] = 250; cl.data[o+3] = Math.min(255, a*a*255*p.cotton);
+    }
+    const c2 = document.createElement('canvas'); c2.width = W; c2.height = H; c2.getContext('2d').putImageData(cl,0,0);
+    g.filter = 'blur(2px)'; g.drawImage(c2,0,0); g.filter = 'none';
+  }
+  for (let n=0;n<p.specks;n++){
+    const x = hash(n,1,i)*W, y = hash(n,2,i)*H, r = .6 + hash(n,3,i)*1.6;
+    g.fillStyle = `rgba(10,14,11,${.5+hash(n,4,i)*.4})`; g.beginPath(); g.ellipse(x, y, r*1.6, r, 0, 0, Math.PI*2); g.fill();
+  }
   const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace; tx.wrapS = THREE.RepeatWrapping; tx.anisotropy = 4;
   texCache.set(i, tx); return tx;
 }
@@ -139,7 +155,7 @@ let vtex = null;
 function applyMaterial(){
   const p = PRESETS[S.preset];
   mat.map = jadeTex(S.preset); mat.transmission = p.trans; mat.roughness = p.rough;
-  mat.thickness = S.day; mat.attenuationColor.set(p.base); mat.attenuationDistance = S.day*.8; mat.needsUpdate = true;
+  mat.thickness = S.day; mat.attenuationColor.set(p.base); mat.attenuationDistance = S.day*(p.cotton ? 1.2 : .8); mat.clearcoat = 1; mat.clearcoatRoughness = .04; mat.needsUpdate = true;
 }
 function rebuild(){ bangle.geometry.dispose(); bangle.geometry = bangleGeo(); applyMaterial(); }
 
@@ -260,7 +276,7 @@ $('shot').addEventListener('click', () => {
   c.toBlob(b => { lastShot = b; $('pic').src = URL.createObjectURL(b); $('share').hidden = !navigator.canShare?.({files:[new File([b],'vong.jpg',{type:'image/jpeg'})]}); $('dlg').showModal(); }, 'image/jpeg', .9);
 });
 $('share').addEventListener('click', async () => { try { await navigator.share({files:[new File([lastShot],'thu-vong.jpg',{type:'image/jpeg'})], title:'Thử vòng ngọc'}); } catch {} });
-window.__live = {S, pose};
+window.__live = {S, pose, applyMaterial};
 }
 </script>
 </body>
